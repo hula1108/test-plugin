@@ -1,35 +1,47 @@
-import { bitable } from '@lark-base-open/js-sdk';
 import Sortable from 'sortablejs';
+// 导入飞书SDK
+import { Bitable } from '@lark-base-open/js-sdk';
 
 // 全局变量
 let tableData = [];
 let availableFields = [];
 let selectedDimensions = [];
 let tableInstance = null;
+let bitable = null; // 声明bitable变量
 
 // 初始化
 async function init() {
-    // 等待飞书SDK加载完成
-    await bitable.ready;
-    
-    // 获取表格实例
     try {
-        const base = bitable.base;
-        // 假设我们使用当前表格
-        tableInstance = await base.getActiveTable();
+        // 初始化飞书SDK
+        bitable = new Bitable();
         
-        // 加载表格字段信息
-        await loadTableFields();
+        // 等待SDK加载完成
+        await bitable.ready;
         
-        // 初始化拖拽功能
-        initDragAndDrop();
-        
-        // 绑定事件监听
-        bindEventListeners();
-        
+        // 获取表格实例
+        try {
+            const base = bitable.base;
+            // 假设我们使用当前表格
+            tableInstance = await base.getActiveTable();
+            
+            // 加载表格字段信息
+            await loadTableFields();
+            
+            // 初始化拖拽功能
+            initDragAndDrop();
+            
+            // 绑定事件监听
+            bindEventListeners();
+            
+        } catch (error) {
+            console.error('获取表格实例失败:', error);
+            document.getElementById('hierarchicalDisplay').innerHTML = 
+                '<div class="empty-state">无法获取表格数据，请确保在飞书多维表格中使用此插件</div>';
+        }
     } catch (error) {
-        console.error('初始化失败:', error);
-        alert('插件初始化失败，请稍后重试');
+        console.error('飞书SDK初始化失败:', error);
+        document.getElementById('hierarchicalDisplay').innerHTML = 
+            '<div class="empty-state">飞书SDK加载失败，请刷新页面重试</div>';
     }
 }
 
@@ -48,6 +60,7 @@ async function loadTableFields() {
         renderAvailableFields();
     } catch (error) {
         console.error('加载字段失败:', error);
+        alert('加载表格字段失败，请稍后重试');
     }
 }
 
