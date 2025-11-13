@@ -1,47 +1,46 @@
-// 导入Sortable
+// 在文件顶部添加
 import Sortable from 'sortablejs';
 
-// 全局变量
-let tableData = [];
+// 声明全局变量
+let bitable = null;
+let loadDataBtn = null;
+let eventListenerBound = false;
 let availableFields = [];
 let selectedDimensions = [];
+let tableData = [];
 let tableInstance = null;
-let bitable = null;
-let loadDataBtn = null; // 保存按钮引用
-let eventListenerBound = false; // 跟踪事件监听器是否已绑定
 
-// 等待DOM完全加载
-if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', onDOMLoaded);
-} else {
-    onDOMLoaded();
+// 尝试导入SDK，但添加错误处理
+let bitableSDK = null;
+try {
+    // 尝试导入SDK，如果可用的话
+    import('@lark-base-open/js-sdk').then(sdk => {
+        if (sdk && sdk.default) {
+            console.log('成功导入飞书SDK');
+            bitableSDK = sdk.default;
+        }
+    }).catch(err => {
+        console.log('飞书SDK导入失败，将使用全局对象或模拟对象:', err);
+    });
+} catch (e) {
+    console.log('飞书SDK导入语句语法不支持，将使用全局对象或模拟对象:', e);
 }
 
-// DOM加载完成后的回调
-function onDOMLoaded() {
-    console.log('DOM已完全加载');
-    // 先获取按钮引用
-    loadDataBtn = document.getElementById('loadDataBtn');
-    if (loadDataBtn) {
-        console.log('成功获取loadDataBtn元素');
-        // 立即绑定一个临时的点击事件，用于调试
-        loadDataBtn.addEventListener('click', function tempClickHandler() {
-            console.log('按钮被点击了！正在等待初始化完成...');
-        });
-    } else {
-        console.error('未找到loadDataBtn元素');
-    }
-    
-    // 启动初始化
-    init();
-}
-
-// 初始化
+// 修改init函数中的SDK获取逻辑
 async function init() {
     console.log('开始初始化插件...');
     try {
-        // 检查全局对象上是否有bitable
-        if (window.bitable) {
+        // 获取DOM元素
+        loadDataBtn = document.getElementById('loadDataBtn');
+        console.log('loadDataBtn元素:', loadDataBtn);
+        
+        // 优先使用导入的SDK
+        if (bitableSDK) {
+            console.log('使用导入的bitable SDK');
+            bitable = bitableSDK;
+        }
+        // 其次检查全局对象上是否有bitable
+        else if (window.bitable) {
             console.log('检测到全局bitable对象');
             bitable = window.bitable;
         } else {
@@ -441,5 +440,14 @@ function renderHierarchicalLevel(container, data, dimensions, level) {
         }
         
         container.appendChild(itemContainer);
+    });
+}
+// 在DOM加载完成后初始化应用
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+} else {
+    // DOM已经加载完成，直接初始化
+    init().catch(error => {
+        console.error('初始化失败:', error);
     });
 }
