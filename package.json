@@ -1,0 +1,19 @@
+{
+  "name": "feishu-bitable-plugin",
+  "version": "1.0.0",
+  "description": "飞书多维表格前端插件，支持字段选择、拖拽调整维度和层级数据展示",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@lark-base-open/js-sdk": "^1.0.0",
+    "@lark-base-open/node-sdk": "^1.0.1",
+    "sortablejs": "^1.15.2"
+  },
+  "devDependencies": {
+    "vite": "^7.2.2"
+  }
+}
