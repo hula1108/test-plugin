@@ -6,7 +6,35 @@ let tableData = [];
 let availableFields = [];
 let selectedDimensions = [];
 let tableInstance = null;
-let bitable = null; // 声明bitable变量
+let bitable = null;
+let loadDataBtn = null; // 保存按钮引用
+let eventListenerBound = false; // 跟踪事件监听器是否已绑定
+
+// 等待DOM完全加载
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', onDOMLoaded);
+} else {
+    onDOMLoaded();
+}
+
+// DOM加载完成后的回调
+function onDOMLoaded() {
+    console.log('DOM已完全加载');
+    // 先获取按钮引用
+    loadDataBtn = document.getElementById('loadDataBtn');
+    if (loadDataBtn) {
+        console.log('成功获取loadDataBtn元素');
+        // 立即绑定一个临时的点击事件，用于调试
+        loadDataBtn.addEventListener('click', function tempClickHandler() {
+            console.log('按钮被点击了！正在等待初始化完成...');
+        });
+    } else {
+        console.error('未找到loadDataBtn元素');
+    }
+    
+    // 启动初始化
+    init();
+}
 
 // 初始化
 async function init() {
@@ -17,56 +45,62 @@ async function init() {
             console.log('检测到全局bitable对象');
             bitable = window.bitable;
         } else {
-            // 尝试作为默认导入使用SDK
-            try {
-                // 对于飞书环境，SDK通常会挂载到window上
-                // 这里添加一个兼容处理
-                console.log('尝试使用飞书环境的SDK');
-                // 等待SDK加载完成
-                await new Promise(resolve => {
-                    const checkSDK = () => {
-                        if (window.bitable) {
-                            bitable = window.bitable;
-                            resolve();
-                        } else {
-                            setTimeout(checkSDK, 100);
-                        }
-                    };
-                    checkSDK();
-                });
-            } catch (error) {
-                console.warn('无法自动获取SDK，将使用模拟对象进行开发调试:', error);
-                // 创建一个模拟对象用于开发调试
-                createMockBitable();
-            }
+            // 尝试等待SDK加载完成
+            console.log('尝试等待飞书SDK加载...');
+            let sdkCheckCount = 0;
+            const maxSdkChecks = 10; // 最多检查10次
+            
+            await new Promise((resolve, reject) => {
+                const checkSDK = () => {
+                    sdkCheckCount++;
+                    console.log(`SDK检查第${sdkCheckCount}次...`);
+                    
+                    if (window.bitable) {
+                        bitable = window.bitable;
+                        console.log('SDK加载成功');
+                        resolve();
+                    } else if (sdkCheckCount >= maxSdkChecks) {
+                        console.warn('SDK加载超时，使用模拟对象');
+                        createMockBitable();
+                        resolve();
+                    } else {
+                        setTimeout(checkSDK, 500); // 每500ms检查一次
+                    }
+                };
+                checkSDK();
+            });
         }
         
-        console.log('SDK获取成功');
+        console.log('SDK获取成功，准备获取表格实例');
         
         // 获取表格实例
         try {
-            const base = bitable.base;
-            console.log('获取base对象成功');
-            // 假设我们使用当前表格
-            tableInstance = await base.getActiveTable();
-            console.log('获取表格实例成功:', tableInstance);
+            if (bitable && bitable.base) {
+                console.log('bitable.base存在');
+                const base = bitable.base;
+                // 假设我们使用当前表格
+                tableInstance = await base.getActiveTable();
+                console.log('获取表格实例成功:', tableInstance);
+            } else {
+                console.warn('bitable或bitable.base不存在，使用模拟表格实例');
+                // 直接使用模拟数据的表格实例
+                if (!tableInstance && bitable && bitable.base && typeof bitable.base.getActiveTable === 'function') {
+                    tableInstance = await bitable.base.getActiveTable();
+                }
+            }
             
             // 加载表格字段信息
-            await loadTableFields();
+            if (tableInstance) {
+                await loadTableFields();
+            } else {
+                console.error('表格实例仍未初始化');
+            }
             
             // 初始化拖拽功能
             initDragAndDrop();
             
             // 绑定事件监听
             bindEventListeners();
-            
-            // 添加按钮点击效果的视觉反馈
-            const loadBtn = document.getElementById('loadDataBtn');
-            if (loadBtn) {
-                console.log('loadDataBtn元素存在');
-            } else {
-                console.error('未找到loadDataBtn元素');
-            }
             
         } catch (error) {
             console.error('获取表格实例失败:', error);
@@ -160,47 +194,66 @@ async function loadTableData() {
     }
     
     // 添加加载状态
-    const loadBtn = document.getElementById('loadDataBtn');
-    const originalText = loadBtn.textContent;
-    loadBtn.textContent = '加载中...';
-    loadBtn.disabled = true;
-    
-    try {
-        console.log('尝试获取表格记录...');
-        const records = await tableInstance.getRecords();
-        console.log('成功获取记录数量:', records.length);
+    if (loadDataBtn) {
+        const originalText = loadDataBtn.textContent;
+        loadDataBtn.textContent = '加载中...';
+        loadDataBtn.disabled = true;
         
-        // 格式化数据
-        tableData = records.map(record => {
-            const formattedData = {};
+        try {
+            console.log('尝试获取表格记录...');
+            const records = await tableInstance.getRecords();
+            console.log('成功获取记录数量:', records.length);
             
-            // 将字段ID映射到字段名称
-            availableFields.forEach(field => {
-                formattedData[field.name] = record.getCellValue(field.id);
+            // 格式化数据
+            tableData = records.map(record => {
+                const formattedData = {};
+                
+                // 将字段ID映射到字段名称
+                availableFields.forEach(field => {
+                    formattedData[field.name] = record.getCellValue(field.id);
+                });
+                
+                return formattedData;
             });
             
-            return formattedData;
-        });
-        
-        console.log('数据格式化完成');
-        
-        // 渲染层级数据
-        if (selectedDimensions.length > 0) {
-            renderHierarchicalData();
-        } else {
-            alert('请先选择维度字段');
+            console.log('数据格式化完成');
+            
+            // 渲染层级数据
+            if (selectedDimensions.length > 0) {
+                renderHierarchicalData();
+            } else {
+                alert('请先选择维度字段');
+            }
+            
+        } catch (error) {
+            console.error('加载数据失败:', error);
+            alert('加载数据失败，请稍后重试。错误: ' + error.message);
+        } finally {
+            // 恢复按钮状态
+            if (loadDataBtn) {
+                loadDataBtn.textContent = originalText;
+                loadDataBtn.disabled = false;
+            }
         }
-        
-    } catch (error) {
-        console.error('加载数据失败:', error);
-        alert('加载数据失败，请稍后重试。错误: ' + error.message);
-    } finally {
-        // 恢复按钮状态
-        loadBtn.textContent = originalText;
-        loadBtn.disabled = false;
     }
 }
 
+// 绑定事件监听器
+function bindEventListeners() {
+    if (loadDataBtn && !eventListenerBound) {
+        console.log('为loadDataBtn绑定点击事件');
+        // 移除所有现有的点击事件监听器
+        const newLoadBtn = loadDataBtn.cloneNode(true);
+        loadDataBtn.parentNode.replaceChild(newLoadBtn, loadDataBtn);
+        loadDataBtn = newLoadBtn;
+        
+        // 添加新的事件监听器
+        loadDataBtn.addEventListener('click', loadTableData);
+        eventListenerBound = true;
+    }
+}
+
+// 其他函数保持不变
 // 渲染可用字段
 function renderAvailableFields() {
     const container = document.getElementById('availableFields');
@@ -390,20 +443,3 @@ function renderHierarchicalLevel(container, data, dimensions, level) {
         container.appendChild(itemContainer);
     });
 }
-
-// 绑定事件监听器
-function bindEventListeners() {
-    const loadBtn = document.getElementById('loadDataBtn');
-    if (loadBtn) {
-        console.log('为loadDataBtn绑定点击事件');
-        // 先移除可能存在的事件监听器，避免重复绑定
-        const newLoadBtn = loadBtn.cloneNode(true);
-        loadBtn.parentNode.replaceChild(newLoadBtn, loadBtn);
-        
-        newLoadBtn.addEventListener('click', loadTableData);
-    }
-}
-
-// 启动初始化
-console.log('准备启动初始化');
-init();
