@@ -1,6 +1,5 @@
+// 导入Sortable
 import Sortable from 'sortablejs';
-// 导入飞书SDK
-import { Bitable } from '@lark-base-open/js-sdk';
 
 // 全局变量
 let tableData = [];
@@ -11,18 +10,46 @@ let bitable = null; // 声明bitable变量
 
 // 初始化
 async function init() {
+    console.log('开始初始化插件...');
     try {
-        // 初始化飞书SDK
-        bitable = new Bitable();
+        // 检查全局对象上是否有bitable
+        if (window.bitable) {
+            console.log('检测到全局bitable对象');
+            bitable = window.bitable;
+        } else {
+            // 尝试作为默认导入使用SDK
+            try {
+                // 对于飞书环境，SDK通常会挂载到window上
+                // 这里添加一个兼容处理
+                console.log('尝试使用飞书环境的SDK');
+                // 等待SDK加载完成
+                await new Promise(resolve => {
+                    const checkSDK = () => {
+                        if (window.bitable) {
+                            bitable = window.bitable;
+                            resolve();
+                        } else {
+                            setTimeout(checkSDK, 100);
+                        }
+                    };
+                    checkSDK();
+                });
+            } catch (error) {
+                console.warn('无法自动获取SDK，将使用模拟对象进行开发调试:', error);
+                // 创建一个模拟对象用于开发调试
+                createMockBitable();
+            }
+        }
         
-        // 等待SDK加载完成
-        await bitable.ready;
+        console.log('SDK获取成功');
         
         // 获取表格实例
         try {
             const base = bitable.base;
+            console.log('获取base对象成功');
             // 假设我们使用当前表格
             tableInstance = await base.getActiveTable();
+            console.log('获取表格实例成功:', tableInstance);
             
             // 加载表格字段信息
             await loadTableFields();
@@ -33,21 +60,79 @@ async function init() {
             // 绑定事件监听
             bindEventListeners();
             
+            // 添加按钮点击效果的视觉反馈
+            const loadBtn = document.getElementById('loadDataBtn');
+            if (loadBtn) {
+                console.log('loadDataBtn元素存在');
+            } else {
+                console.error('未找到loadDataBtn元素');
+            }
+            
         } catch (error) {
             console.error('获取表格实例失败:', error);
             document.getElementById('hierarchicalDisplay').innerHTML = 
-                '<div class="empty-state">无法获取表格数据，请确保在飞书多维表格中使用此插件</div>';
+                '<div class="empty-state">无法获取表格数据，请确保在飞书多维表格中使用此插件。错误信息：' + error.message + '</div>';
         }
     } catch (error) {
         console.error('飞书SDK初始化失败:', error);
         document.getElementById('hierarchicalDisplay').innerHTML = 
-            '<div class="empty-state">飞书SDK加载失败，请刷新页面重试</div>';
+            '<div class="empty-state">飞书SDK加载失败，请刷新页面重试。错误信息：' + error.message + '</div>';
     }
+}
+
+// 创建模拟的bitable对象用于开发调试
+function createMockBitable() {
+    console.log('创建模拟的bitable对象');
+    
+    // 模拟数据
+    const mockRecords = [
+        { 产品: '手机A', 地区: '华东', 季度: 'Q1', 销量: 1200 },
+        { 产品: '手机B', 地区: '华东', 季度: 'Q1', 销量: 800 },
+        { 产品: '手机A', 地区: '华北', 季度: 'Q1', 销量: 900 },
+        { 产品: '手机B', 地区: '华北', 季度: 'Q1', 销量: 700 },
+        { 产品: '手机A', 地区: '华东', 季度: 'Q2', 销量: 1500 },
+        { 产品: '手机B', 地区: '华东', 季度: 'Q2', 销量: 1000 },
+    ];
+    
+    const mockFields = [
+        { id: 'f1', name: '产品', type: 'text' },
+        { id: 'f2', name: '地区', type: 'text' },
+        { id: 'f3', name: '季度', type: 'text' },
+        { id: 'f4', name: '销量', type: 'number' },
+    ];
+    
+    bitable = {
+        base: {
+            async getActiveTable() {
+                return {
+                    async getFields() {
+                        return mockFields;
+                    },
+                    async getRecords() {
+                        // 模拟网络延迟
+                        await new Promise(resolve => setTimeout(resolve, 500));
+                        
+                        // 模拟Record对象数组
+                        return mockRecords.map((record, index) => ({
+                            id: `rec${index}`,
+                            getCellValue(fieldId) {
+                                const field = mockFields.find(f => f.id === fieldId);
+                                return record[field.name];
+                            }
+                        }));
+                    }
+                };
+            }
+        }
+    };
 }
 
 // 加载表格字段
 async function loadTableFields() {
-    if (!tableInstance) return;
+    if (!tableInstance) {
+        console.warn('表格实例不存在，无法加载字段');
+        return;
+    }
     
     try {
         const fields = await tableInstance.getFields();
@@ -57,10 +142,62 @@ async function loadTableFields() {
             type: field.type
         }));
         
+        console.log('成功加载字段:', availableFields);
         renderAvailableFields();
     } catch (error) {
         console.error('加载字段失败:', error);
-        alert('加载表格字段失败，请稍后重试');
+        alert('加载表格字段失败，请稍后重试。错误: ' + error.message);
+    }
+}
+
+// 加载表格数据
+async function loadTableData() {
+    console.log('点击了加载数据按钮');
+    if (!tableInstance) {
+        console.error('表格实例不存在');
+        alert('表格未初始化，请刷新页面重试');
+        return;
+    }
+    
+    // 添加加载状态
+    const loadBtn = document.getElementById('loadDataBtn');
+    const originalText = loadBtn.textContent;
+    loadBtn.textContent = '加载中...';
+    loadBtn.disabled = true;
+    
+    try {
+        console.log('尝试获取表格记录...');
+        const records = await tableInstance.getRecords();
+        console.log('成功获取记录数量:', records.length);
+        
+        // 格式化数据
+        tableData = records.map(record => {
+            const formattedData = {};
+            
+            // 将字段ID映射到字段名称
+            availableFields.forEach(field => {
+                formattedData[field.name] = record.getCellValue(field.id);
+            });
+            
+            return formattedData;
+        });
+        
+        console.log('数据格式化完成');
+        
+        // 渲染层级数据
+        if (selectedDimensions.length > 0) {
+            renderHierarchicalData();
+        } else {
+            alert('请先选择维度字段');
+        }
+        
+    } catch (error) {
+        console.error('加载数据失败:', error);
+        alert('加载数据失败，请稍后重试。错误: ' + error.message);
+    } finally {
+        // 恢复按钮状态
+        loadBtn.textContent = originalText;
+        loadBtn.disabled = false;
     }
 }
 
@@ -170,38 +307,6 @@ function initDragAndDrop() {
     }
 }
 
-// 加载表格数据
-async function loadTableData() {
-    if (!tableInstance) return;
-    
-    try {
-        const records = await tableInstance.getRecords();
-        
-        // 格式化数据
-        tableData = records.map(record => {
-            const formattedData = {};
-            
-            // 将字段ID映射到字段名称
-            availableFields.forEach(field => {
-                formattedData[field.name] = record.getCellValue(field.id);
-            });
-            
-            return formattedData;
-        });
-        
-        // 渲染层级数据
-        if (selectedDimensions.length > 0) {
-            renderHierarchicalData();
-        } else {
-            alert('请先选择维度字段');
-        }
-        
-    } catch (error) {
-        console.error('加载数据失败:', error);
-        alert('加载数据失败，请稍后重试');
-    }
-}
-
 // 渲染层级数据
 function renderHierarchicalData() {
     const container = document.getElementById('hierarchicalDisplay');
@@ -288,8 +393,17 @@ function renderHierarchicalLevel(container, data, dimensions, level) {
 
 // 绑定事件监听器
 function bindEventListeners() {
-    document.getElementById('loadDataBtn').addEventListener('click', loadTableData);
+    const loadBtn = document.getElementById('loadDataBtn');
+    if (loadBtn) {
+        console.log('为loadDataBtn绑定点击事件');
+        // 先移除可能存在的事件监听器，避免重复绑定
+        const newLoadBtn = loadBtn.cloneNode(true);
+        loadBtn.parentNode.replaceChild(newLoadBtn, loadBtn);
+        
+        newLoadBtn.addEventListener('click', loadTableData);
+    }
 }
 
 // 启动初始化
+console.log('准备启动初始化');
 init();
